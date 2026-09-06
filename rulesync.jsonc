@@ -1,0 +1,10 @@
+{
+  "$schema": "https://github.com/dyoshikawa/rulesync/releases/latest/download/config-schema.json",
+  "features": [
+    "rules"
+  ],
+  "targets": [
+    "claudecode",
+    "codexcli"
+  ]
+}

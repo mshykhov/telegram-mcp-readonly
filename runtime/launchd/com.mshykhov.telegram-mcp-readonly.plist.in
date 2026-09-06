@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>MCP_HOST</key>
+		<string>127.0.0.1</string>
+		<key>MCP_PORT</key>
+		<string>8765</string>
+		<key>MCP_TRANSPORT</key>
+		<string>http</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>com.mshykhov.telegram-mcp-readonly</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@TELEGRAM_MCP_UV@</string>
+		<string>--directory</string>
+		<string>@TELEGRAM_MCP_CHECKOUT@</string>
+		<string>run</string>
+		<string>telegram-mcp</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>@TELEGRAM_MCP_LOG_PATH@</string>
+	<key>StandardOutPath</key>
+	<string>@TELEGRAM_MCP_LOG_PATH@</string>
+	<key>WorkingDirectory</key>
+	<string>@TELEGRAM_MCP_CHECKOUT@</string>
+</dict>
+</plist>

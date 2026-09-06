@@ -1,0 +1,19 @@
+{
+  "name": "telegram-mcp-readonly-agent-tooling",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "agent-config:generate": "npm ci && npm run rulesync:generate",
+    "rulesync:install": "rulesync install --config rulesync.jsonc --frozen",
+    "rulesync:doctor": "rulesync doctor --config rulesync.jsonc --strict",
+    "rulesync:dry-run": "rulesync generate --config rulesync.jsonc --input-root . --output-roots . --dry-run",
+    "rulesync:generate": "rulesync generate --config rulesync.jsonc --input-root . --output-roots .",
+    "rulesync:check": "rulesync generate --config rulesync.jsonc --input-root . --output-roots . --check",
+    "rulesync:verify": "npm run rulesync:install && npm run rulesync:doctor && npm run rulesync:check"
+  },
+  "devDependencies": {
+    "rulesync": "16.7.0"
+  }
+}

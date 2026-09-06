@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-mcp"
+version = "2.0.1"
+description = "Strict read-only Telegram integration for AI agents via the Model Context Protocol"
+readme = "README.md"
+authors = [
+    {name = "chigwell"},
+    {name = "l1v0n1"}
+]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12"
+]
+requires-python = ">=3.10"
+dependencies = [
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.8.0,<2",
+    "python-dotenv>=1.1.0",
+    "python-json-logger>=3.3.0",
+    "qrcode>=8.2",
+    "telethon>=1.44.0",
+]
+
+[project.optional-dependencies]
+# Required only when TELEGRAM_PROXY_TYPE is set to socks5/socks4/http.
+proxy = [
+    "python-socks>=2.4.3",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/mshykhov/telegram-mcp-readonly"
+"Bug Tracker" = "https://github.com/mshykhov/telegram-mcp-readonly/issues"
+
+[tool.setuptools]
+py-modules = ["main", "sanitize", "session_string_generator"]
+packages = ["telegram_mcp", "telegram_mcp.tools"]
+
+[project.scripts]
+telegram-mcp = "main:main"
+telegram-mcp-generate-session = "session_string_generator:main"
+telegram-mcp-shared-service = "telegram_mcp.shared_service:main"
+
+[tool.black]
+line-length = 99
+target-version = ['py311']
+
+[tool.flake8]
+ignore = ["E203", "E501", "W503"]
+max-line-length = 99
+max-complexity = 10
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    "docs/source/conf.py",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.9.0",
+    "flake8>=7.3.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.coverage.run]
+branch = true
+# Unit coverage focuses on deterministic local logic. The Telegram tool modules
+# are live API adapters and should get separate mocked or integration coverage.
+source = [
+    "main",
+    "sanitize",
+    "telegram_mcp.runtime",
+    "telegram_mcp.shared_service",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80
