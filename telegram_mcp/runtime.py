@@ -238,10 +238,11 @@ def _get_exposed_tools_mode(value: Optional[str] = None) -> str:
     ``TELEGRAM_EXPOSED_TOOLS=read-only`` keeps only tools annotated with
     ``readOnlyHint=True``. ``read-only+send_message,reply_to_message`` keeps
     those plus the named write tools. ``strict-read-only`` ignores annotations
-    and keeps only :data:`STRICT_READ_ONLY_TOOLS`. The default is ``all`` for
-    backward compatibility.
+    and keeps only :data:`STRICT_READ_ONLY_TOOLS`. The default is
+    ``strict-read-only``; set ``all`` explicitly only when a write-capable
+    integration is intended.
     """
-    raw_value = os.getenv("TELEGRAM_EXPOSED_TOOLS", "all") if value is None else value
+    raw_value = os.getenv("TELEGRAM_EXPOSED_TOOLS", "strict-read-only") if value is None else value
     mode = raw_value.strip().lower()
     base_mode, allowlist = _split_exposed_tools_mode(mode)
     if base_mode not in _EXPOSED_TOOLS_MODES:

@@ -49,10 +49,21 @@ def test_shared_server_uses_stateless_http_transport():
     assert runtime.mcp.settings.stateless_http is True
 
 
-def test_get_exposed_tools_mode_defaults_to_all(monkeypatch):
+def test_get_exposed_tools_mode_defaults_to_strict_read_only(monkeypatch):
     monkeypatch.delenv("TELEGRAM_EXPOSED_TOOLS", raising=False)
 
-    assert runtime._get_exposed_tools_mode() == "all"
+    assert runtime._get_exposed_tools_mode() == "strict-read-only"
+
+
+def test_default_exposure_uses_strict_read_only_whitelist(monkeypatch):
+    server = _synthetic_mcp()
+    monkeypatch.delenv("TELEGRAM_EXPOSED_TOOLS", raising=False)
+    monkeypatch.setattr(runtime, "STRICT_READ_ONLY_TOOLS", frozenset({"read_tool"}))
+
+    removed = runtime._apply_exposed_tools_mode(server)
+
+    assert removed == ["write_tool"]
+    assert _tool_names(server) == {"read_tool"}
 
 
 def test_apply_exposed_tools_all_keeps_tools():
