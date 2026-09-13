@@ -1637,7 +1637,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "mcp", extras = ["cli"], specifier = "==1.29.0" },
     { name = "pillow", specifier = "==12.3.0" },
-    { name = "python-dotenv", specifier = "==1.2.2" },
+    { name = "python-dotenv", specifier = "==1.2.3" },
     { name = "python-json-logger", specifier = "==4.1.0" },
     { name = "python-socks", marker = "extra == 'proxy'", specifier = "==3.0.0" },
     { name = "qrcode", specifier = "==8.2" },
