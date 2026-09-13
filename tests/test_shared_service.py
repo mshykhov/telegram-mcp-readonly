@@ -20,7 +20,6 @@ from telegram_mcp.shared_service import (
     validate_tool_surface,
 )
 
-
 TEMPLATE = (
     Path(__file__).parents[1]
     / "runtime"

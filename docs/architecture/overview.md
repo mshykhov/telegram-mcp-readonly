@@ -27,6 +27,8 @@
 
 `download_media_readonly` is the single deliberate local write in that surface. It accepts no caller-provided path, generates a unique name below `TELEGRAM_READONLY_DOWNLOAD_DIR`, resolves the destination against that root, and applies owner-only permissions. Boundary tests assert both the allowed surface and excluded mutations.
 
+Strict mode also disables voice transcription and transcript-cache access inside message reads, even when `TELEGRAM_TRANSCRIBE=auto` is configured. New upstream photo and transcription tools remain outside the audited allowlist.
+
 ## State and secrets
 
 The runtime reads Telegram credentials and session configuration from environment variables and the ignored `.env` file. It supports one account, labelled multi-account sessions, and a locked pool of interchangeable sessions for concurrent clients.
@@ -34,6 +36,8 @@ The runtime reads Telegram credentials and session configuration from environmen
 The local strict read-only setup creates `.local/telegram-readonly.session`, `downloads/`, and `.env` with owner-only permissions. It uses QR authorization and does not print or store a portable session string in client configuration. All of these paths remain outside version control.
 
 For concurrent agent clients, the local service manager renders an owner-only LaunchAgent that runs the trusted checkout over loopback Streamable HTTP. One process owns the Telethon SQLite session; clients share the HTTP endpoint and never open that file directly. The rendered plist contains only executable, checkout, log, transport, host, and port values.
+
+The runner acquires an exclusive local session lock before connecting and releases it on exit. This also prevents a second server from connecting the same session during a restart. Keep the default exclusive lock for file-backed sessions and use the shared HTTP service for multiple clients.
 
 ## External boundaries
 

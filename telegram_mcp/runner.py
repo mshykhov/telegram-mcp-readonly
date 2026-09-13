@@ -10,16 +10,70 @@ except UnsafeInstallationError as exc:
 from telethon.errors import AuthKeyDuplicatedError
 
 from telegram_mcp import runtime as _runtime
+from telegram_mcp import transcription as _transcription
 from telegram_mcp.runtime import *
+from telegram_mcp.singleton import (
+    DEFAULT_GRACE_SECONDS,
+    SessionLock,
+    SessionLockError,
+    session_identity,
+)
 import telegram_mcp.tools  # noqa: F401 - registers MCP tools via decorators
+
+# Populated as each account's session lock is acquired; released in _main's
+# finally block so a lock is never held past this process's lifetime.
+_session_locks: dict[str, SessionLock] = {}
+
+
+def _lock_grace_seconds() -> float:
+    raw = os.getenv("TELEGRAM_LOCK_GRACE_SECONDS")
+    if not raw:
+        return DEFAULT_GRACE_SECONDS
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_GRACE_SECONDS
+
+
+_SESSION_LOCK_MODES = ("exclusive", "shared")
+
+
+def _session_lock_shared() -> bool:
+    """``TELEGRAM_SESSION_LOCK``: exclusive (default) | shared.
+
+    ``exclusive`` refuses to start while another instance on this host holds
+    the same session. ``shared`` takes the lock in shared mode instead, so any
+    number of instances on this host can use one session -- safe only when
+    they all reach Telegram from the same IP, since Telegram invalidates a
+    session it sees from two IPs at once. Shared and exclusive instances never
+    overlap, so the default keeps its guarantee.
+    """
+    raw = (os.getenv("TELEGRAM_SESSION_LOCK") or "exclusive").strip().lower()
+    if raw not in _SESSION_LOCK_MODES:
+        accepted = ", ".join(_SESSION_LOCK_MODES)
+        raise SystemExit(f"Invalid TELEGRAM_SESSION_LOCK '{raw}'. Expected one of: {accepted}.")
+    return raw == "shared"
 
 
 async def _connect_authorized_client(label, client) -> None:
-    # Tolerate a transient AuthKeyDuplicatedError (the same session briefly seen
-    # from two IPs, e.g. during a VPN reconnect) with a bounded retry so a blip
-    # does not take the whole server down. Give each concurrent client its own
-    # session (TELEGRAM_SESSION_STRINGS pool or TELEGRAM_SESSION_STRING_<LABEL>)
-    # to avoid the collision entirely.
+    # First, prevent our own duplicate-spawn case outright: a per-session lock
+    # means a second instance of this server never even attempts to connect
+    # while another instance already holds the same session (see
+    # telegram_mcp/singleton.py for why and how). The lock only sees processes
+    # on this host; TELEGRAM_SESSION_LOCK=shared lets those share one session
+    # where they all reach Telegram from a single IP.
+    lock = SessionLock(label, session_identity(client))
+    await asyncio.to_thread(
+        lock.acquire, grace_seconds=_lock_grace_seconds(), shared=_session_lock_shared()
+    )
+    _session_locks[label] = lock
+
+    # Once we hold the lock, still tolerate a transient AuthKeyDuplicatedError
+    # from Telegram itself (e.g. the same session briefly seen from two IPs
+    # during a VPN reconnect) with a bounded retry, since that's not caused by
+    # a second instance of this server and a blip shouldn't take the server
+    # down. Give each concurrent client its own session (TELEGRAM_SESSION_STRINGS
+    # pool or TELEGRAM_SESSION_STRING_<LABEL>) to avoid the collision entirely.
     max_attempts = 4
     for attempt in range(1, max_attempts + 1):
         try:
@@ -137,6 +191,18 @@ async def _main() -> None:
                 "Database lock detected. Please ensure no other instances are running.",
                 file=sys.stderr,
             )
+        elif isinstance(e, SessionLockError):
+            print(
+                "Another instance of this MCP server already holds this Telegram "
+                "session (e.g. the client restarted the connector without the old "
+                "process exiting yet). This instance is exiting instead of "
+                "connecting a second time, which would risk Telegram invalidating "
+                "the session for both. Retry once the other instance is gone, or "
+                "set TELEGRAM_SESSION_LOCK=shared if several instances on this "
+                "host are meant to share one session (safe when they all reach "
+                "Telegram from the same IP).",
+                file=sys.stderr,
+            )
         sys.exit(1)
     finally:
         try:
@@ -145,11 +211,16 @@ async def _main() -> None:
             )
         except Exception:
             pass
+        for lock in _session_locks.values():
+            lock.release()
+        _session_locks.clear()
 
 
 def main() -> None:
     _configure_allowed_roots_from_cli(sys.argv[1:])
     _runtime._apply_exposed_tools_mode()
+    _transcription.validate_transcription_config()
+    _session_lock_shared()  # fail loudly at startup on a bad toggle
     asyncio.run(_main())
 
 
