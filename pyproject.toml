@@ -28,7 +28,7 @@ dependencies = [
     "mcp[cli]==1.29.1",
     "pillow==12.3.0",
     "python-dotenv==1.2.3",
-    "python-json-logger==4.1.0",
+    "python-json-logger==4.2.0",
     "qrcode==8.2",
     "telethon==1.44.0",
 ]
