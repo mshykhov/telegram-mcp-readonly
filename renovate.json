@@ -3,16 +3,23 @@
   "extends": [
     "github>mshykhov/renovate-config"
   ],
+  "platformAutomerge": true,
   "packageRules": [
     {
-      "description": "Review changes to the MCP and Telegram clients and generated agent configuration before merging.",
-      "matchPackageNames": ["mcp", "telethon", "rulesync"],
-      "automerge": false
+      "description": "Let GitHub merge non-breaking dependency updates after every required check succeeds.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
+      "automerge": true
     },
     {
       "description": "Keep the audited MCP v1 contract until an explicit v2 migration.",
       "matchPackageNames": ["mcp"],
       "allowedVersions": "<2"
+    },
+    {
+      "description": "Require a deliberate review for breaking dependency changes.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "dependencyDashboardApproval": true
     }
   ]
 }
