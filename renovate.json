@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>mshykhov/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "Review changes to the MCP and Telegram clients and generated agent configuration before merging.",
+      "matchPackageNames": ["mcp", "telethon", "rulesync"],
+      "automerge": false
+    },
+    {
+      "description": "Keep the audited MCP v1 contract until an explicit v2 migration.",
+      "matchPackageNames": ["mcp"],
+      "allowedVersions": "<2"
+    }
+  ]
+}

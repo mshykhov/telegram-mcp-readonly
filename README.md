@@ -41,6 +41,10 @@ For one local client, configure a stdio server:
 
 The setup script writes the required configuration. See [`.env.example`](.env.example) for optional proxy, multi-account, event-feed, and device settings. The [documentation map](docs/README.md) includes the [shared-service runbook](docs/runbooks/operate-shared-readonly-service.md) for macOS installations shared by several clients.
 
+## Dependency updates
+
+[Renovate](renovate.json) uses the [shared update policy](https://github.com/mshykhov/renovate-config) for Python dependencies and `uv.lock`, npm tooling, Docker images, and GitHub Actions. Patch updates can merge after passing CI; major updates require dashboard approval. MCP, Telethon, Rulesync, and weekly lock-file maintenance require manual merging. MCP stays below v2 until a reviewed migration.
+
 ## Attribution and license
 
 This project is based on [chigwell/telegram-mcp](https://github.com/chigwell/telegram-mcp) and is licensed under the [Apache License 2.0](LICENSE).
