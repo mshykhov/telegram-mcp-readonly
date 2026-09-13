@@ -12,18 +12,18 @@ from contextlib import contextmanager
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Optional, Union, Any, get_args
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 # Third-party libraries
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP, Context
-from mcp.types import Annotations, TextContent, ToolAnnotations
+from mcp.server.fastmcp import FastMCP, Context, Image
+from mcp.types import Annotations, ImageContent, TextContent, ToolAnnotations
 from mcp.shared.exceptions import McpError
 from pythonjsonlogger import jsonlogger
 from telethon import TelegramClient, functions, types, utils
-from telethon.errors import AuthKeyDuplicatedError
+from telethon.errors import AuthKeyDuplicatedError, FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.types import (
     User,
@@ -52,6 +52,8 @@ try:
     import fcntl  # POSIX advisory locks; unavailable on Windows
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
+
+from telegram_mcp.singleton import try_lock_exclusive
 
 from functools import wraps
 import telethon.errors.rpcerrorlist
@@ -109,6 +111,33 @@ def get_entity_filter_type(entity: Any) -> Optional[str]:
     return None
 
 
+def parse_schedule_date(
+    schedule_date: Union[str, int],
+) -> tuple[Optional[datetime], Optional[str]]:
+    """Return (datetime, None) for a usable schedule_date, or (None, error message).
+
+    Accepts an ISO-8601 string or a Unix timestamp; naive datetimes are UTC.
+    """
+    try:
+        if isinstance(schedule_date, int):
+            dt = datetime.fromtimestamp(schedule_date, tz=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(str(schedule_date).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None, (
+            "schedule_date could not be parsed. Use an ISO-8601 date/time or Unix timestamp."
+        )
+
+    now = datetime.now(timezone.utc)
+    if dt <= now:
+        return None, (
+            f"schedule_date must be in the future (got {dt.isoformat()}, now {now.isoformat()})."
+        )
+    return dt, None
+
+
 load_dotenv()
 
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
@@ -139,7 +168,8 @@ def _install_annotation_hook() -> None:
                 response.root.content = [
                     (
                         block.model_copy(update={"annotations": _USER_AUDIENCE})
-                        if isinstance(block, TextContent) and block.annotations is None
+                        if isinstance(block, (TextContent, ImageContent))
+                        and block.annotations is None
                         else block
                     )
                     for block in content
@@ -397,14 +427,30 @@ def _build_proxy_for_label(label: str) -> tuple[Optional[Any], Optional[Any]]:
     return proxy, None
 
 
+def _get_flood_sleep_threshold() -> int:
+    """Read TELEGRAM_FLOOD_SLEEP_THRESHOLD from environment (default: 60)."""
+    raw = os.getenv("TELEGRAM_FLOOD_SLEEP_THRESHOLD", "60").strip()
+    try:
+        val = int(raw)
+        if val < 0:
+            logger.warning("Negative TELEGRAM_FLOOD_SLEEP_THRESHOLD clamped to 0 (fail-fast mode)")
+            return 0
+        return val
+    except ValueError:
+        logger.warning("Invalid TELEGRAM_FLOOD_SLEEP_THRESHOLD; falling back to default 60s")
+        return 60
+
+
 def _build_client(session: Any, label: str) -> TelegramClient:
-    """Construct a ``TelegramClient`` honoring per-label proxy configuration."""
+    """Construct a ``TelegramClient`` honoring per-label proxy and flood sleep configuration."""
     proxy, connection = _build_proxy_for_label(label)
     kwargs: dict[str, Any] = {}
     if proxy is not None:
         kwargs["proxy"] = proxy
     if connection is not None:
         kwargs["connection"] = connection
+    # Read flood sleep threshold dynamically so runtime env changes take effect
+    kwargs["flood_sleep_threshold"] = _get_flood_sleep_threshold()
     kwargs.update(client_identity_kwargs())
     return TelegramClient(session, TELEGRAM_API_ID, TELEGRAM_API_HASH, **kwargs)
 
@@ -443,11 +489,6 @@ def _parse_session_pool() -> List[str]:
 
 def _acquire_session(pool: List[str]) -> str:
     """Claim the first free session in the pool via an advisory file lock."""
-    if fcntl is None:
-        # No advisory locks (e.g. Windows): can't coordinate slots, so use the
-        # first session. For concurrent clients there, prefer distinct
-        # TELEGRAM_SESSION_STRING_<LABEL> accounts instead.
-        return pool[0]
     lock_dir = os.path.join(tempfile.gettempdir(), "telegram-mcp-session-locks")
     try:
         os.makedirs(lock_dir, exist_ok=True)
@@ -457,9 +498,12 @@ def _acquire_session(pool: List[str]) -> str:
         digest = hashlib.sha1(session.encode("utf-8")).hexdigest()[:16]
         lock_path = os.path.join(lock_dir, f"session-{digest}.lock")
         try:
-            fh = open(lock_path, "w")
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # "a+", not "w": on Windows the lock covers the first byte, and
+            # truncating a file another live client holds is refused.
+            fh = open(lock_path, "a+")
         except OSError:
+            continue
+        if not try_lock_exclusive(fh):
             # Locked by another live client — try the next session.
             try:
                 fh.close()
@@ -468,6 +512,8 @@ def _acquire_session(pool: List[str]) -> str:
             continue
         _SESSION_LOCKS.append(fh)
         try:
+            fh.seek(0)
+            fh.truncate()
             fh.write(f"pid={os.getpid()}\n")
             fh.flush()
         except OSError:
@@ -596,7 +642,14 @@ def with_account(readonly=False):
                 return label, await fn(*args, **kw)
 
             results = await asyncio.gather(*(_call_for(label) for label in clients))
-            return "\n\n".join(f"[{label}]\n{result}" for label, result in results)
+            if all(isinstance(result, str) for _, result in results):
+                return "\n\n".join(f"[{label}]\n{result}" for label, result in results)
+
+            account_labelled_content = []
+            for label, result in results:
+                account_labelled_content.append(f"[{label}]")
+                account_labelled_content.extend(result if isinstance(result, list) else [result])
+            return account_labelled_content
 
         return wrapper
 
@@ -708,12 +761,12 @@ try:
     # Add handlers to logger
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
-    logger.info(f"Logging initialized to {log_file_path}")
-except Exception as log_error:
-    print(f"WARNING: Error setting up log file: {log_error}", file=sys.stderr)
+    logger.info("Logging initialized")
+except Exception:
+    print("WARNING: Error setting up log file; using console logging only.", file=sys.stderr)
     # Fallback to console-only logging
     logger.addHandler(console_handler)
-    logger.error(f"Failed to set up log file handler: {log_error}")
+    logger.error("Failed to set up log file handler; using console logging only.")
 
 
 # File-path tool security configuration
@@ -727,6 +780,7 @@ EXTENSION_ALLOWLISTS: dict[str, set[str]] = {
     "edit_chat_photo": {".jpg", ".jpeg", ".png", ".webp"},
 }
 MAX_FILE_BYTES: dict[str, int] = {
+    "download_media": 200 * 1024 * 1024,  # 200 MB
     "send_file": 200 * 1024 * 1024,  # 200 MB
     "upload_file": 200 * 1024 * 1024,
     "send_voice": 100 * 1024 * 1024,
@@ -756,6 +810,23 @@ class ErrorCategory(str, Enum):
     FOLDER = "FOLDER"
 
 
+def _is_flood_wait(error: Exception) -> bool:
+    """True for Telethon FloodWaitError."""
+    try:
+        return isinstance(error, FloodWaitError)
+    except Exception:  # telethon missing or moved — not this helper's problem
+        return False
+
+
+def _is_schema_drift(error: Exception) -> bool:
+    """True for TypeNotFoundError — the installed TL schema is older than what the server sends."""
+    try:
+        from telethon.errors.common import TypeNotFoundError
+    except Exception:  # telethon missing or moved — not this helper's problem
+        return False
+    return isinstance(error, TypeNotFoundError)
+
+
 def log_and_format_error(
     function_name: str,
     error: Exception,
@@ -774,7 +845,7 @@ def log_and_format_error(
         prefix: Error code prefix (e.g., ErrorCategory.CHAT, "VALIDATION-001").
             If None, it will be derived from the function_name.
         user_message: A custom user-facing message to return. If None, a generic one is created.
-        **kwargs: Additional context parameters to include in the log.
+        **kwargs: Additional context parameters. These are never written to persistent logs.
 
     Returns:
         A user-friendly error message with an error code.
@@ -799,17 +870,44 @@ def log_and_format_error(
         prefix_str = prefix.value if isinstance(prefix, ErrorCategory) else (prefix or "GEN")
         error_code = f"{prefix_str}-ERR-{abs(hash(function_name)) % 1000:03d}"
 
-    # Format the additional context parameters
-    context = ", ".join(f"{k}={v}" for k, v in kwargs.items())
+    # Telegram FloodWait (Rate Limiting) must be explicitly formatted for LLM agents.
+    # LLMs will blindly retry generic errors, escalating the flood penalty and risking bans.
+    # Log only a categorical warning; the user-facing response below carries the
+    # actionable wait duration. The persistent error-file handler intentionally
+    # does not store WARNING records.
+    if _is_flood_wait(error):
+        seconds = getattr(error, "seconds", None) or 0
+        logger.warning("Telegram FloodWait; retry only after the reported delay.")
+        if user_message:
+            return user_message
+        wait_clause = f"{seconds} seconds" if seconds > 0 else "an unknown duration"
+        return (
+            f"Rate limit exceeded (FloodWait): Telegram requires waiting {wait_clause} "
+            f"before repeating this operation. Do NOT retry immediately (code: {error_code})."
+        )
 
-    # Log the full technical error
-    logger.error(f"Error in {function_name} ({context}) - Code: {error_code}", exc_info=True)
+    # Keep persistent logs useful without recording exception text, tracebacks,
+    # identifiers, user content, provider payloads, or local paths.
+    logger.error("Telegram MCP operation failed; see the returned stable error code.")
 
     # Return a user-friendly message
     if user_message:
         return user_message
 
-    return f"An error occurred (code: {error_code}). Check mcp_errors.log for details."
+    # MTProto schema drift must not hide behind the generic code. Telethon releases lag
+    # behind production Telegram, and when the server sends an object whose constructor
+    # the installed schema does not know, the read buffer desynchronises: some tools fail
+    # while their neighbours keep working. Reported as a generic error, that pattern is
+    # indistinguishable from "no such user/chat" and sends debugging the wrong way.
+    if _is_schema_drift(error):
+        return (
+            f"MTProto schema mismatch: the installed Telethon does not know an object the "
+            f"server sent. This is NOT a missing user or chat — the data arrived, "
+            f"parsing it failed. Upgrade Telethon; if it is already the latest release, its "
+            f"schema is behind the current layer (code: {error_code})."
+        )
+
+    return f"An error occurred (code: {error_code})."
 
 
 def validate_id(*param_names_to_validate):
@@ -947,6 +1045,83 @@ def make_rich_input(parse_mode: str, text: str):
     return types.InputRichMessageMarkdown(markdown=text)
 
 
+# Reading a rich message is the other direction, and it needs its own walk: a
+# channel posting in this format leaves msg.message empty and carries every word
+# as Instant-View page blocks, so a reader that only looks at msg.message
+# reports the whole post as empty.
+_RICH_TEXT_TYPES = tuple(get_args(types.TypeRichText))
+
+# RichText is a recursive tree: a node either holds a plain string, wraps
+# another node, or concatenates a list of them. Dispatching on the field rather
+# than on the class keeps a node type Telegram adds later flattening instead of
+# vanishing.
+_RICH_TEXT_FIELDS = ("texts", "text", "alt", "source")
+
+# Where a page block, list item, table row or caption keeps its words. Same walk
+# covers the blocks nested inside details, collages and embedded posts.
+_PAGE_TEXT_FIELDS = (
+    "title",
+    "subtitle",
+    "author",
+    "text",
+    "caption",
+    "credit",
+    "items",
+    "blocks",
+    "rows",
+    "articles",
+)
+
+
+def rich_text_to_str(node) -> str:
+    """Flatten one RichText node into plain text.
+
+    TextCustomEmoji contributes its alt character - dropping it would silently
+    eat the emoji a channel used as a bullet or a heading marker.
+    """
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, (list, tuple)):
+        return "".join(rich_text_to_str(item) for item in node)
+    for field in _RICH_TEXT_FIELDS:
+        value = getattr(node, field, None)
+        if value is not None:
+            return rich_text_to_str(value)
+    return ""  # TextEmpty, TextImage and anything else carrying no text
+
+
+def _page_lines(node) -> List[str]:
+    """Text lines carried by a page block, list item, table row or caption."""
+    if node is None:
+        return []
+    if isinstance(node, (list, tuple)):
+        return [line for item in node for line in _page_lines(item)]
+    if isinstance(node, _RICH_TEXT_TYPES):
+        text = rich_text_to_str(node).strip()
+        return [text] if text else []
+    cells = getattr(node, "cells", None)
+    if cells is not None:  # a table row reads as one line, not one line per cell
+        row = " | ".join(line for cell in cells for line in _page_lines(cell))
+        return [row] if row else []
+    return [line for f in _PAGE_TEXT_FIELDS for line in _page_lines(getattr(node, f, None))]
+
+
+def rich_message_text(msg) -> str:
+    """Plain text of a rich (block-format) message, "" when there is none.
+
+    Each block becomes a paragraph and the lines within one block stay together,
+    so a list reads as a list instead of one run-on line. An unknown block type
+    yields nothing rather than breaking the whole message.
+    """
+    blocks = getattr(getattr(msg, "rich_message", None), "blocks", None)
+    if not blocks:
+        return ""
+    paragraphs = ("\n".join(_page_lines(block)) for block in blocks)
+    return "\n\n".join(p for p in paragraphs if p)
+
+
 def premium_required_result(action: str) -> str:
     """Structured refusal so the agent can degrade gracefully instead of sending garbage."""
     return json.dumps(
@@ -1010,11 +1185,14 @@ def load_aliases(strict: bool = False) -> Dict[str, Dict[str, Any]]:
     except FileNotFoundError:
         return {}
     except (OSError, ValueError, TypeError) as error:
-        logger.warning("Ignoring unreadable aliases file %s: %s", path, error)
+        logger.warning("Ignoring unreadable aliases file; saved aliases were not changed.")
         if strict:
             # Refuse to write over data we could not read: a degraded read plus a
             # write-back would silently delete every alias in the file.
-            raise AliasStoreUnreadable(str(error)) from error
+            raise AliasStoreUnreadable(
+                "Saved contacts could not be read; no changes were written. "
+                "Check the aliases file and retry."
+            ) from error
         return {}
 
     records: Dict[str, Dict[str, Any]] = {}
@@ -1683,10 +1861,7 @@ async def _get_effective_allowed_roots_with_status(
     except Exception as error:
         recovered_roots = _coerce_paths_from_list_roots_validation_error(error)
         if recovered_roots:
-            logger.warning(
-                "MCP client returned non-URI roots; recovered %d path(s) from validation error.",
-                len(recovered_roots),
-            )
+            logger.warning("MCP client returned non-URI roots; recovered validated paths.")
             return recovered_roots, ROOTS_STATUS_READY
         if _is_roots_unsupported_error(error):
             if fallback_roots:
@@ -1698,12 +1873,9 @@ async def _get_effective_allowed_roots_with_status(
             logger.warning(
                 "MCP roots request failed; falling back to server CLI roots "
                 "(TELEGRAM_ALLOW_SERVER_ROOTS_FALLBACK).",
-                exc_info=True,
             )
             return fallback_roots, ROOTS_STATUS_SERVER_FALLBACK
-        logger.error(
-            "MCP roots request failed; disabling file-path tools for safety.", exc_info=True
-        )
+        logger.error("MCP roots request failed; disabling file-path tools for safety.")
         return [], ROOTS_STATUS_ERROR
 
     client_roots: List[Path] = []
@@ -1855,7 +2027,10 @@ def _configure_allowed_roots_from_cli(argv: Optional[List[str]] = None) -> None:
     for raw_root in parsed.allowed_roots:
         root = Path(raw_root).expanduser()
         if not root.exists():
-            raise SystemExit(f"Allowed root does not exist: {root}")
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                raise SystemExit(f"Allowed root does not exist: {root}")
         resolved = root.resolve(strict=True)
         resolved_roots.append(resolved)
 

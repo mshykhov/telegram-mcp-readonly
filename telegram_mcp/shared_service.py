@@ -20,7 +20,6 @@ from xml.sax.saxutils import escape
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-
 LABEL = "com.mshykhov.telegram-mcp-readonly"
 DEFAULT_URL = "http://127.0.0.1:8765/mcp"
 ROOT = Path(__file__).resolve().parents[1]

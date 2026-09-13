@@ -3,6 +3,5 @@
 
 from setup_readonly import main
 
-
 if __name__ == "__main__":
     main()

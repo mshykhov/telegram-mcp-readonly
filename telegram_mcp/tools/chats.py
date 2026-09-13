@@ -576,10 +576,8 @@ async def list_chats(
                     elif isinstance(entity, User):
                         full = await cl(functions.users.GetFullUserRequest(id=entity))
                         about_text = getattr(full.full_user, "about", "") or ""
-                except Exception as about_err:
-                    logger.warning(
-                        f"list_chats: failed to fetch about for {entity.id}: {about_err}"
-                    )
+                except Exception:
+                    logger.warning("list_chats: failed to fetch one chat description")
                     about_text = "<error fetching description>"
 
                 record["about"] = sanitize_user_content(about_text, max_length=200)
@@ -651,6 +649,16 @@ async def get_chat(chat_id: Union[int, str], account: str = None) -> str:
             record["bot"] = bool(entity.bot)
             record["verified"] = bool(entity.verified)
 
+        # Photo presence — the entity carries ChatPhoto/ChatPhotoEmpty (chats/channels)
+        # or UserProfilePhoto/UserProfilePhotoEmpty (users). Surfaced so callers can
+        # detect chats that have no avatar set.
+        photo = getattr(entity, "photo", None)
+        record["has_photo"] = photo is not None and not isinstance(
+            photo, (types.ChatPhotoEmpty, types.UserProfilePhotoEmpty)
+        )
+        if record["has_photo"]:
+            record["current_avatar_id"] = getattr(photo, "photo_id", None)
+
         # Get unread count + last activity for THIS specific peer.
         #
         # NOTE: do NOT use get_dialogs(limit=1, offset_peer=entity) here. In
@@ -689,8 +697,8 @@ async def get_chat(chat_id: Union[int, str], account: str = None) -> str:
                     "date": last_msg.date,
                     "text": sanitize_user_content(last_msg.message),
                 }
-        except Exception as diag_ex:
-            logger.warning(f"Could not get dialog info for {chat_id}: {diag_ex}")
+        except Exception:
+            logger.warning("Could not get requested dialog metadata")
 
         return format_tool_result([], metadata=record)
     except Exception as e:
@@ -825,10 +833,8 @@ async def mute_chat(chat_id: Union[int, str], account: str = None) -> str:
             )
             return f"Chat {chat_id} muted (using alternative method)."
         except Exception as alt_e:
-            logger.exception(f"mute_chat (alt method) failed (chat_id={chat_id})")
             return log_and_format_error("mute_chat", alt_e, chat_id=chat_id)
     except Exception as e:
-        logger.exception(f"mute_chat failed (chat_id={chat_id})")
         return log_and_format_error("mute_chat", e, chat_id=chat_id)
 
 
@@ -870,10 +876,8 @@ async def unmute_chat(chat_id: Union[int, str], account: str = None) -> str:
             )
             return f"Chat {chat_id} unmuted (using alternative method)."
         except Exception as alt_e:
-            logger.exception(f"unmute_chat (alt method) failed (chat_id={chat_id})")
             return log_and_format_error("unmute_chat", alt_e, chat_id=chat_id)
     except Exception as e:
-        logger.exception(f"unmute_chat failed (chat_id={chat_id})")
         return log_and_format_error("unmute_chat", e, chat_id=chat_id)
 
 
@@ -976,9 +980,6 @@ async def get_common_chats(
 
         return "\n".join(lines)
     except Exception as e:
-        logger.exception(
-            f"get_common_chats failed (user_id={user_id}, limit={limit}, max_id={max_id})"
-        )
         return log_and_format_error(
             "get_common_chats", e, user_id=user_id, limit=limit, max_id=max_id
         )
@@ -1067,9 +1068,6 @@ async def get_message_read_by(
             default=json_serializer,
         )
     except Exception as e:
-        logger.exception(
-            f"get_message_read_by failed (chat_id={chat_id}, message_id={message_id})"
-        )
         return log_and_format_error(
             "get_message_read_by", e, chat_id=chat_id, message_id=message_id
         )
@@ -1123,10 +1121,6 @@ async def get_message_link(
             output += f"\nHTML: {html}"
         return output
     except Exception as e:
-        logger.exception(
-            f"get_message_link failed (chat_id={chat_id}, message_id={message_id}, "
-            f"thread={thread})"
-        )
         return log_and_format_error(
             "get_message_link",
             e,

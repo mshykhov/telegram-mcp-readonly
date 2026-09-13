@@ -203,3 +203,5 @@ sticker.webp
 two.png
 aliases.json
 incoming_feed.jsonl
+data/transcripts/
+transcript_cache/
