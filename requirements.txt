@@ -1,8 +1,8 @@
-dotenv>=0.9.9
-httpx>=0.28.1
-mcp[cli]>=1.8.0,<2
-pillow>=11.0.0
-python-dotenv>=1.1.0
-python-json-logger>=3.3.0
-qrcode>=8.2
-telethon>=1.44.0
+dotenv==0.9.9
+httpx==0.28.1
+mcp[cli]==1.29.0
+pillow==12.3.0
+python-dotenv==1.2.2
+python-json-logger==4.1.0
+qrcode==8.2
+telethon==1.44.0
