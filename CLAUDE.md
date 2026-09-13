@@ -13,7 +13,7 @@ Read `docs/README.md` before changing architecture, configuration, commands, or 
 - `telegram_mcp/runner.py` connects clients and starts stdio, Streamable HTTP, or SSE transport.
 - `telegram_mcp/tools/` groups FastMCP tools by Telegram domain; importing the package registers decorators on the shared server.
 - `telegram_mcp/install_guard.py` rejects ambiguous installs of the unrelated PyPI distribution.
-- `setup_codex_readonly.py` performs local QR setup and writes owner-only state without exposing a portable session string.
+- `setup_readonly.py` performs local QR setup and writes owner-only state without exposing a portable session string.
 
 ## Commands
 

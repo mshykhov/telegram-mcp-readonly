@@ -11,7 +11,7 @@
 | `telegram_mcp/tools/` | FastMCP tools grouped by account, chat, contact, event, folder, group, media, message, and profile domain |
 | `telegram_mcp/install_guard.py` | Refusal of ambiguous installs using the unrelated `telegram-mcp` PyPI distribution |
 | `sanitize.py` | Sanitization and structured formatting of Telegram-controlled output |
-| `setup_codex_readonly.py` | One-time local QR authorization and owner-only strict read-only state setup |
+| `setup_readonly.py` | One-time local QR authorization and owner-only strict read-only state setup |
 
 ## Server flow
 
@@ -23,7 +23,7 @@
 
 ## Strict read-only boundary
 
-`TELEGRAM_EXPOSED_TOOLS=strict-read-only` ignores MCP tool annotations and retains only names in `STRICT_READ_ONLY_TOOLS`. The allowlist covers account, chat, folder, topic, contact, search, history, metadata, and passive wait operations. Known mutations such as sending, editing, deleting, forwarding, reacting, marking read, archiving, inviting, changing profiles, and changing folders are removed before the server starts.
+`strict-read-only` is the default `TELEGRAM_EXPOSED_TOOLS` mode. It ignores MCP tool annotations and retains only names in `STRICT_READ_ONLY_TOOLS`. The allowlist covers account, chat, folder, topic, contact, search, history, metadata, and passive wait operations. Known mutations such as sending, editing, deleting, forwarding, reacting, marking read, archiving, inviting, changing profiles, and changing folders are removed before the server starts.
 
 `download_media_readonly` is the single deliberate local write in that surface. It accepts no caller-provided path, generates a unique name below `TELEGRAM_READONLY_DOWNLOAD_DIR`, resolves the destination against that root, and applies owner-only permissions. Boundary tests assert both the allowed surface and excluded mutations.
 

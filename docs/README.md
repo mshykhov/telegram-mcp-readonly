@@ -22,7 +22,7 @@ Living documents change with the behavior they describe. Snapshot documents pres
 | `telegram_mcp/runtime.py` or `telegram_mcp/runner.py` | [architecture/overview.md](architecture/overview.md), root `README.md` transports and configuration |
 | `telegram_mcp/shared_service.py` or `runtime/launchd/**` | Root `README.md`, [architecture/overview.md](architecture/overview.md), and [runbooks/operate-shared-readonly-service.md](runbooks/operate-shared-readonly-service.md) |
 | `telegram_mcp/tools/**` | [architecture/overview.md](architecture/overview.md), root `README.md` capabilities and security guidance |
-| `setup_codex_readonly.py` or `.env.example` | Root `README.md` strict read-only setup and [architecture/overview.md](architecture/overview.md) state ownership |
+| `setup_readonly.py` or `.env.example` | Root `README.md` strict read-only setup and [architecture/overview.md](architecture/overview.md) state ownership |
 | `telegram_mcp/install_guard.py` or packaging metadata | Root `README.md` installation warnings and [architecture/overview.md](architecture/overview.md) boundaries |
 | `pyproject.toml`, `uv.lock`, or `.pre-commit-config.yaml` | Root `README.md` development commands |
 | `.rulesync/**`, `rulesync.jsonc`, `package.json`, or `package-lock.json` | Root `README.md`, [architecture/overview.md](architecture/overview.md), and generated instruction outputs |

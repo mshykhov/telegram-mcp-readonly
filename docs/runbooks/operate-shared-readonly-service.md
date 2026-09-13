@@ -1,6 +1,6 @@
 # Operate the shared read-only service
 
-Use this procedure when Codex, Claude, or multiple agent sessions share the owner-only file session created by `setup_codex_readonly.py`. A per-client stdio declaration is not safe for that topology: the first process owns the Telethon SQLite file and later processes fail MCP initialization with `database is locked`.
+Use this procedure when multiple MCP clients share the owner-only file session created by `setup_readonly.py`. A per-client stdio declaration is not safe for that topology: the first process owns the Telethon SQLite file and later processes fail MCP initialization with `database is locked`.
 
 The managed service runs one Streamable HTTP endpoint at `http://127.0.0.1:8765/mcp`. It is unauthenticated and must remain loopback-only.
 
@@ -14,7 +14,7 @@ uv run telegram-mcp-shared-service check
 stat -f '%N mode=%Sp' .env .local .local/telegram-readonly.session
 ```
 
-`.env`, `.local`, and the session file must have no group or world permissions. If local authorization is missing, run `uv run python setup_codex_readonly.py` before continuing. Never print or copy their contents.
+`.env`, `.local`, and the session file must have no group or world permissions. If local authorization is missing, run `uv run python setup_readonly.py` before continuing. Never print or copy their contents.
 
 ## Prepare
 
