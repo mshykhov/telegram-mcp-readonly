@@ -1,6 +1,6 @@
 dotenv==0.9.9
 httpx==0.28.1
-mcp[cli]==1.29.0
+mcp[cli]==1.29.1
 pillow==12.3.0
 python-dotenv==1.2.3
 python-json-logger==4.1.0
