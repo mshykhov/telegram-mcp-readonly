@@ -63,6 +63,8 @@ The setup script writes the required configuration. See [`.env.example`](.env.ex
 
 [Renovate](renovate.json) uses the [shared update policy](https://github.com/mshykhov/renovate-config) for Python dependencies and `uv.lock`, npm tooling, Docker images, and GitHub Actions. Minor, patch, and pin updates merge automatically after all required CI checks pass against the current `main`. Major updates require dashboard approval and manual merging; weekly lock-file maintenance also stays manual. MCP stays below v2 until a reviewed migration.
 
+Python application dependencies are pinned so each PR updates exactly the advertised version. Renovate refreshes branches when `main` advances, and CI blocks its PRs if lock-file generation fails. Eligible updates can merge at any time after the shared release-age checks pass.
+
 ## Fork maintenance
 
 This fork adds the audited read-only tool boundary, confined attachment downloads, QR setup, and a shared local service. The original upstream commits retain their authors and dates. Upstream changes through [`5d7f0a7`](https://github.com/chigwell/telegram-mcp/commit/5d7f0a7) are integrated, including rich-message reading, custom emoji metadata, safer error logging, and session locks.

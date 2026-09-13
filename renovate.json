@@ -7,19 +7,44 @@
   "packageRules": [
     {
       "description": "Let GitHub merge non-breaking dependency updates after every required check succeeds.",
-      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
-      "automerge": true
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "digest"
+      ],
+      "automerge": true,
+      "automergeSchedule": [
+        "at any time"
+      ]
+    },
+    {
+      "description": "Pin Python application dependencies so uv resolves exactly the version shown in each update PR.",
+      "matchManagers": [
+        "pep621",
+        "pip_requirements"
+      ],
+      "rangeStrategy": "pin"
     },
     {
       "description": "Keep the audited MCP v1 contract until an explicit v2 migration.",
-      "matchPackageNames": ["mcp"],
+      "matchPackageNames": [
+        "mcp"
+      ],
       "allowedVersions": "<2"
     },
     {
       "description": "Require a deliberate review for breaking dependency changes.",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false,
       "dependencyDashboardApproval": true
     }
-  ]
+  ],
+  "rebaseWhen": "behind-base-branch",
+  "statusCheckWhen": {
+    "artifactError": "always"
+  }
 }
