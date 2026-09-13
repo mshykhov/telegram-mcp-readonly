@@ -25,6 +25,9 @@
         "pep621",
         "pip_requirements"
       ],
+      "matchDatasources": [
+        "pypi"
+      ],
       "rangeStrategy": "pin"
     },
     {
