@@ -36,7 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 # Required only when TELEGRAM_PROXY_TYPE is set to socks5/socks4/http.
 proxy = [
-    "python-socks==3.0.0",
+    "python-socks==3.1.1",
 ]
 
 [project.urls]
