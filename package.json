@@ -14,6 +14,6 @@
     "rulesync:verify": "npm run rulesync:install && npm run rulesync:doctor && npm run rulesync:check"
   },
   "devDependencies": {
-    "rulesync": "16.32.0"
+    "rulesync": "16.33.0"
   }
 }
